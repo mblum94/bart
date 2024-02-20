@@ -243,7 +243,7 @@ TCALIB=ncalib ecalib ecaltwo caldir walsh cc ccapply rovir calmat svd estvar whi
 TMRI=homodyne poisson twixread fakeksp looklocker upat fovshift
 TSIM=phantom traj signal epg sim
 TIO=toimg
-TNN=reconet nnet onehotenc measure mnist tensorflow nlinvnet
+TNN=reconet nnet onehotenc measure mnist tensorflow nlinvnet raki
 
 
 
@@ -303,7 +303,7 @@ MODULES_sim = -lsimu
 MODULES_morphop = -lnlops -llinops -lgeom
 MODULES_psf = -lnoncart -llinops
 MODULES_nlinvnet = -lnetworks -lnoir -liter -lnn -lnlops -llinops -lnoncart -lgrecon -lnetworks -lsense -liter -llinops -lwavelet -llowrank -lnoncart -lnlops -lnn
-
+MODULES_raki = -lnetworks -lnoncart -lnn -lnlops -llinops -liter
 
 
 
