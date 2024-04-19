@@ -10,6 +10,7 @@
 #include <complex.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "misc/mmio.h"
 #include "misc/mri.h"
@@ -56,9 +57,9 @@ int main_ncalib(int argc, char* argv[argc])
 	};
 
 	struct noir2_conf_s conf = noir2_defaults;
-	conf.iter = 12;
+	conf.iter = 25;
 
-	long calsize[3] = { 32, 32, 32 };
+	long calsize[3] = { 48, 48, 48 };
 	long ksenssize[3] = { 16, 16, 16 };
 
 	long my_sens_dims[3] = { 0, 0, 0 };
@@ -78,9 +79,9 @@ int main_ncalib(int argc, char* argv[argc])
 		OPT_INFILE('t', &trj_file, "file", "kspace trajectory"),
 		OPT_INFILE('p', &pat_file, "file", "kspace pattern"),
 		OPT_INFILE('B', &bas_file, "file", "subspace basis"),
+		OPT_VEC3('r', &calsize, "cal_size", "Limits the size of the calibration region."),
 
 		OPT_UINT('i', &conf.iter, "iter", "Number of Newton steps"),
-		OPT_FLOAT('R', &conf.redu, "", "(reduction factor)"),
 		OPTL_INT(0, "cgiter", &conf.cgiter, "iter", "(iterations for linearized problem)"),
 		OPTL_FLOAT(0, "cgtol", &conf.cgtol, "tol", "(tolerance for linearized problem)"),
 	
@@ -174,7 +175,7 @@ int main_ncalib(int argc, char* argv[argc])
 		long cord_dims[DIMS];
 		md_select_dims(DIMS, MD_BIT(0), cord_dims, trj_dims);
 		
-		complex float inv_dims[3] = { 1. / dims[0],  1. / dims[1], 1. / dims[2]};
+		complex float inv_dims[3] = { 1. / (dims[0] - ksenssize[0]),  1. / (dims[1] - ksenssize[1]), 1. / (dims[2] - ksenssize[2])};
 		md_zmul2(DIMS, trj_dims, MD_STRIDES(DIMS, trj_dims, CFL_SIZE), trj_tmp, MD_STRIDES(DIMS, trj_dims, CFL_SIZE), trj_tmp, MD_STRIDES(DIMS, cord_dims, CFL_SIZE), inv_dims);
 
 		md_zslessequal(DIMS, trj_dims, trj_tmp, trj_tmp, 0.5);
@@ -203,8 +204,23 @@ int main_ncalib(int argc, char* argv[argc])
 		complex float* nksp = anon_cfl(NULL, DIMS, nksp_dims);
 		complex float* npat = anon_cfl(NULL, DIMS, npat_dims);
 
-		md_resize_center(DIMS, nksp_dims, nksp, ksp_dims, kspace, CFL_SIZE);
-		md_resize_center(DIMS, npat_dims, npat, pat_dims, pattern, CFL_SIZE);
+		complex float* tmp = md_alloc(DIMS, nksp_dims, CFL_SIZE);
+		long tdims[DIMS];
+
+		md_copy_dims(DIMS, tdims, nksp_dims);
+		for (int i = 0; i < 3; i++)
+			tdims[i] -= ksenssize[i];
+
+		md_resize_center(DIMS, tdims, tmp, ksp_dims, kspace, CFL_SIZE);
+		md_resize_center(DIMS, nksp_dims, nksp, tdims, tmp, CFL_SIZE);
+
+		md_copy_dims(DIMS, tdims, npat_dims);
+		for (int i = 0; i < 3; i++)
+			tdims[i] -= ksenssize[i];
+
+		md_resize_center(DIMS, tdims, tmp, pat_dims, pattern, CFL_SIZE);
+		md_resize_center(DIMS, npat_dims, npat, tdims, tmp, CFL_SIZE);
+
 
 		unmap_cfl(DIMS, ksp_dims, kspace);
 		unmap_cfl(DIMS, pat_dims, pattern);
@@ -262,8 +278,12 @@ int main_ncalib(int argc, char* argv[argc])
 	complex float* ksens = md_alloc(DIMS, ksens_dims, CFL_SIZE);
 	complex float* sens = create_cfl(out_file, DIMS, sens_dims);
 
-	md_zfill(DIMS, img_dims, img, 1.);
+	float norm_img = sqrt(md_calc_size(3, my_sens_dims)) / sqrtf(md_calc_size(3, img_dims));
+
+	md_zfill(DIMS, img_dims, img, norm_img);
 	md_clear(DIMS, ksens_dims, ksens, CFL_SIZE);
+
+	complex float mask = 1. / norm_img;
 
 
 	if (NULL != traj) {
@@ -283,7 +303,7 @@ int main_ncalib(int argc, char* argv[argc])
 			trj_dims, traj,
 			pat_dims, pattern,
 			bas_dims, basis,
-			MD_SINGLETON_DIMS(DIMS), NULL,
+			MD_SINGLETON_DIMS(DIMS), &mask,
 			cim_dims);
 
 	} else {
@@ -295,7 +315,7 @@ int main_ncalib(int argc, char* argv[argc])
 			ksp_dims, kspace,
 			pat_dims, pattern,
 			bas_dims, basis,
-			MD_SINGLETON_DIMS(DIMS), NULL,
+			MD_SINGLETON_DIMS(DIMS), &mask,
 			cim_dims);
 	}
 
